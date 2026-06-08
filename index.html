@@ -1,91 +1,168 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>ElectroBot</title>
-    <style>
-        body{
-            font-family: Arial, sans-serif;
-            background:#111;
-            color:white;
-            text-align:center;
-        }
+<meta charset="UTF-8">
+<title>Virtual Electronics Lab</title>
 
-        #chatbox{
-            width:80%;
-            max-width:600px;
-            height:400px;
-            margin:20px auto;
-            border:2px solid cyan;
-            overflow-y:auto;
-            padding:10px;
-            text-align:left;
-        }
+<style>
+body{
+    font-family:Arial,sans-serif;
+    background:#1a1a1a;
+    color:white;
+    text-align:center;
+}
 
-        input{
-            width:70%;
-            padding:10px;
-        }
+h1{
+    color:cyan;
+}
 
-        button{
-            padding:10px 20px;
-            cursor:pointer;
-        }
+#circuit{
+    margin:40px auto;
+    width:800px;
+    display:flex;
+    justify-content:space-around;
+    align-items:center;
+}
 
-        .user{
-            color:yellow;
-        }
+.component{
+    padding:20px;
+    border:2px solid white;
+    border-radius:10px;
+    width:120px;
+}
 
-        .bot{
-            color:cyan;
-        }
-    </style>
+#battery{
+    background:#444;
+}
+
+#switch{
+    cursor:pointer;
+}
+
+#led{
+    width:60px;
+    height:60px;
+    border-radius:50%;
+    margin:auto;
+    background:#300;
+    box-shadow:none;
+    transition:0.3s;
+}
+
+.ledon{
+    background:red !important;
+    box-shadow:0 0 30px red;
+}
+
+#motor{
+    width:80px;
+    height:80px;
+    border:5px solid cyan;
+    border-radius:50%;
+    margin:auto;
+}
+
+.spin{
+    animation:rotate 0.5s linear infinite;
+}
+
+@keyframes rotate{
+    from{transform:rotate(0deg);}
+    to{transform:rotate(360deg);}
+}
+
+button{
+    padding:12px 25px;
+    font-size:18px;
+    cursor:pointer;
+}
+
+#status{
+    margin-top:20px;
+    font-size:22px;
+    color:yellow;
+}
+
+#wire{
+    font-size:30px;
+}
+</style>
 </head>
+
 <body>
 
-<h1>⚡ ElectroBot ⚡</h1>
+<h1>⚡ Virtual Electronics Lab ⚡</h1>
 
-<div id="chatbox">
-    <div class="bot"><b>Bot:</b> Ask me about electronics!</div>
+<p>Turn ON the switch to power the LED and Motor.</p>
+
+<div id="circuit">
+
+<div class="component" id="battery">
+<h3>🔋 Battery</h3>
+<p>9V</p>
 </div>
 
-<input type="text" id="userInput" placeholder="Type here...">
-<button onclick="sendMessage()">Send</button>
+<div id="wire">━━━</div>
+
+<div class="component" id="switch">
+<h3>🔘 Switch</h3>
+<button onclick="togglePower()">OFF</button>
+</div>
+
+<div id="wire">━━━</div>
+
+<div class="component">
+<h3>💡 LED</h3>
+<div id="led"></div>
+</div>
+
+<div id="wire">━━━</div>
+
+<div class="component">
+<h3>⚙️ Motor</h3>
+<div id="motor"></div>
+</div>
+
+</div>
+
+<div id="status">
+Circuit Open
+</div>
 
 <script>
-function sendMessage(){
 
-    let input=document.getElementById("userInput");
-    let msg=input.value.toLowerCase();
+let power=false;
 
-    let chat=document.getElementById("chatbox");
+function togglePower(){
 
-    chat.innerHTML += "<div class='user'><b>You:</b> "+msg+"</div>";
+    power=!power;
 
-    let reply="I don't know that yet.";
+    const btn=document.querySelector("button");
+    const led=document.getElementById("led");
+    const motor=document.getElementById("motor");
+    const status=document.getElementById("status");
 
-    if(msg.includes("ohm law")){
-        reply="Ohm's Law: V = I × R";
+    if(power){
+
+        btn.innerText="ON";
+
+        led.classList.add("ledon");
+
+        motor.classList.add("spin");
+
+        status.innerHTML=
+        "Current Flowing ✔️<br>LED ON<br>Motor Running";
+
+    }else{
+
+        btn.innerText="OFF";
+
+        led.classList.remove("ledon");
+
+        motor.classList.remove("spin");
+
+        status.innerHTML="Circuit Open";
     }
-    else if(msg.includes("resistor")){
-        reply="A resistor limits current flow in a circuit.";
-    }
-    else if(msg.includes("led")){
-        reply="LED stands for Light Emitting Diode.";
-    }
-    else if(msg.includes("capacitor")){
-        reply="A capacitor stores electrical charge.";
-    }
-    else if(msg.includes("transistor")){
-        reply="A transistor acts as a switch or amplifier.";
-    }
-    else if(msg.includes("hello")){
-        reply="Hello! I'm ElectroBot.";
-    }
-
-    chat.innerHTML += "<div class='bot'><b>Bot:</b> "+reply+"</div>";
-
-    input.value="";
-    chat.scrollTop=chat.scrollHeight;
 }
 </script>
 
