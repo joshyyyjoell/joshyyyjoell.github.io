@@ -1,10 +1,108 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Josh's Website</title>
+    <title>Catch the Electron</title>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+            background: #111;
+            color: white;
+            overflow: hidden;
+        }
+
+        h1 {
+            color: cyan;
+        }
+
+        #score {
+            font-size: 24px;
+        }
+
+        #electron {
+            position: absolute;
+            font-size: 50px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        #timer {
+            font-size: 24px;
+            color: yellow;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 18px;
+            margin-top: 10px;
+        }
+    </style>
 </head>
 <body>
-    <h1>Welcome to My Website</h1>
-    <p>This website is hosted for free using GitHub Pages.</p>
+
+    <h1>⚡ Catch the Electron ⚡</h1>
+    <p>Click the electron before it escapes!</p>
+
+    <div id="score">Score: 0</div>
+    <div id="timer">Time: 30</div>
+    <button onclick="startGame()">Start Game</button>
+
+    <div id="electron">⚡</div>
+
+    <script>
+        let score = 0;
+        let timeLeft = 30;
+        let gameRunning = false;
+
+        const electron = document.getElementById("electron");
+        const scoreDisplay = document.getElementById("score");
+        const timerDisplay = document.getElementById("timer");
+
+        electron.style.display = "none";
+
+        function moveElectron() {
+            const x = Math.random() * (window.innerWidth - 100);
+            const y = Math.random() * (window.innerHeight - 100);
+
+            electron.style.left = x + "px";
+            electron.style.top = y + "px";
+        }
+
+        electron.addEventListener("click", () => {
+            if (!gameRunning) return;
+
+            score++;
+            scoreDisplay.textContent = "Score: " + score;
+            moveElectron();
+        });
+
+        function startGame() {
+            score = 0;
+            timeLeft = 30;
+            gameRunning = true;
+
+            scoreDisplay.textContent = "Score: 0";
+            timerDisplay.textContent = "Time: 30";
+
+            electron.style.display = "block";
+            moveElectron();
+
+            const timer = setInterval(() => {
+                timeLeft--;
+                timerDisplay.textContent = "Time: " + timeLeft;
+
+                moveElectron();
+
+                if (timeLeft <= 0) {
+                    clearInterval(timer);
+                    gameRunning = false;
+                    electron.style.display = "none";
+
+                    alert("Game Over! Your Score: " + score);
+                }
+            }, 1000);
+        }
+    </script>
+
 </body>
 </html>
