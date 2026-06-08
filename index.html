@@ -1,170 +1,44 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>Virtual Electronics Lab</title>
-
-<style>
-body{
-    font-family:Arial,sans-serif;
-    background:#1a1a1a;
-    color:white;
-    text-align:center;
-}
-
-h1{
-    color:cyan;
-}
-
-#circuit{
-    margin:40px auto;
-    width:800px;
-    display:flex;
-    justify-content:space-around;
-    align-items:center;
-}
-
-.component{
-    padding:20px;
-    border:2px solid white;
-    border-radius:10px;
-    width:120px;
-}
-
-#battery{
-    background:#444;
-}
-
-#switch{
-    cursor:pointer;
-}
-
-#led{
-    width:60px;
-    height:60px;
-    border-radius:50%;
-    margin:auto;
-    background:#300;
-    box-shadow:none;
-    transition:0.3s;
-}
-
-.ledon{
-    background:red !important;
-    box-shadow:0 0 30px red;
-}
-
-#motor{
-    width:80px;
-    height:80px;
-    border:5px solid cyan;
-    border-radius:50%;
-    margin:auto;
-}
-
-.spin{
-    animation:rotate 0.5s linear infinite;
-}
-
-@keyframes rotate{
-    from{transform:rotate(0deg);}
-    to{transform:rotate(360deg);}
-}
-
-button{
-    padding:12px 25px;
-    font-size:18px;
-    cursor:pointer;
-}
-
-#status{
-    margin-top:20px;
-    font-size:22px;
-    color:yellow;
-}
-
-#wire{
-    font-size:30px;
-}
-</style>
+    <title>Virtual Electronics Lab</title>
+    <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
 
 <h1>⚡ Virtual Electronics Lab ⚡</h1>
 
-<p>Turn ON the switch to power the LED and Motor.</p>
+<p>Drag components and connect them.</p>
 
-<div id="circuit">
+<button id="simulateBtn">Simulate Circuit</button>
 
-<div class="component" id="battery">
-<h3>🔋 Battery</h3>
-<p>9V</p>
-</div>
+<div id="workspace">
 
-<div id="wire">━━━</div>
+    <div class="component" id="battery" style="left:50px;top:200px;">
+        🔋 Battery
+    </div>
 
-<div class="component" id="switch">
-<h3>🔘 Switch</h3>
-<button onclick="togglePower()">OFF</button>
-</div>
+    <div class="component" id="switch" style="left:250px;top:200px;">
+        🔘 Switch
+    </div>
 
-<div id="wire">━━━</div>
+    <div class="component" id="led" style="left:450px;top:100px;">
+        💡 LED
+    </div>
 
-<div class="component">
-<h3>💡 LED</h3>
-<div id="led"></div>
-</div>
+    <div class="component" id="motor" style="left:450px;top:300px;">
+        ⚙️ Motor
+    </div>
 
-<div id="wire">━━━</div>
-
-<div class="component">
-<h3>⚙️ Motor</h3>
-<div id="motor"></div>
-</div>
+    <svg id="wireLayer"></svg>
 
 </div>
 
 <div id="status">
-Circuit Open
+Waiting for simulation...
 </div>
 
-<script>
-
-let power=false;
-
-function togglePower(){
-
-    power=!power;
-
-    const btn=document.querySelector("button");
-    const led=document.getElementById("led");
-    const motor=document.getElementById("motor");
-    const status=document.getElementById("status");
-
-    if(power){
-
-        btn.innerText="ON";
-
-        led.classList.add("ledon");
-
-        motor.classList.add("spin");
-
-        status.innerHTML=
-        "Current Flowing ✔️<br>LED ON<br>Motor Running";
-
-    }else{
-
-        btn.innerText="OFF";
-
-        led.classList.remove("ledon");
-
-        motor.classList.remove("spin");
-
-        status.innerHTML="Circuit Open";
-    }
-}
-</script>
+<script src="script.js"></script>
 
 </body>
 </html>
