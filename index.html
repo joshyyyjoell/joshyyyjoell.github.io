@@ -1,44 +1,47 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Virtual Electronics Lab</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <h1>⚡ Virtual Electronics Lab ⚡</h1>
+<p>🔹 Drag components • Double‑click to connect • Right‑click a wire to delete it 🔹</p>
 
-<p>Drag components and connect them.</p>
-
-<button id="simulateBtn">Simulate Circuit</button>
+<div class="controls">
+    <button id="simulateBtn">🔌 Simulate Circuit</button>
+    <button id="clearWiresBtn">🗑️ Clear All Wires</button>
+    <div class="battery-control">
+        <label>🔋 Battery Voltage: <span id="voltageValue">5.0</span> V</label>
+        <input type="range" id="voltageSlider" min="0" max="12" step="0.5" value="5">
+    </div>
+</div>
 
 <div id="workspace">
+    <!-- Battery terminals -->
+    <div class="component" id="battery_pos" style="left:30px; top:200px;">🔋 Battery (+)</div>
+    <div class="component" id="battery_neg" style="left:30px; top:320px;">⚫ Ground (–)</div>
 
-    <div class="component" id="battery" style="left:50px;top:200px;">
-        🔋 Battery
-    </div>
+    <!-- Switch (toggle) -->
+    <div class="component switch closed" id="switch" style="left:200px; top:260px;">🔘 Switch (ON)</div>
 
-    <div class="component" id="switch" style="left:250px;top:200px;">
-        🔘 Switch
-    </div>
-
-    <div class="component" id="led" style="left:450px;top:100px;">
-        💡 LED
-    </div>
-
-    <div class="component" id="motor" style="left:450px;top:300px;">
-        ⚙️ Motor
-    </div>
+    <!-- Loads and passive components -->
+    <div class="component" id="led" style="left:400px; top:100px;">💡 LED</div>
+    <div class="component" id="motor" style="left:400px; top:300px;">⚙️ Motor</div>
+    <div class="component" id="resistor" style="left:600px; top:160px;">🔋 Resistor</div>
+    <div class="component" id="capacitor" style="left:600px; top:260px;">⚡ Capacitor</div>
+    <div class="component" id="inductor" style="left:600px; top:360px;">🌀 Inductor</div>
 
     <svg id="wireLayer"></svg>
-
 </div>
 
 <div id="status">
-Waiting for simulation...
+    ⏳ Waiting for simulation...
 </div>
 
 <script src="script.js"></script>
-
 </body>
 </html>
