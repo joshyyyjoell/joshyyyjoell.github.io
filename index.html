@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Matrix Completion vs AODV — energy efficiency (slow motion)</title>
+  <title>Matrix Completion vs AODV — fixed src/dst, slow mobility</title>
   <style>
     * {
       box-sizing: border-box;
@@ -255,6 +255,10 @@
     .dot.predicted-dot {
       background: #c084fc;
     }
+    .dot.src-dot {
+      background: #f9f871;
+      border: 2px solid #fff;
+    }
     .info-note {
       margin-top: 14px;
       background: #0a1621b0;
@@ -273,6 +277,15 @@
       font-style: italic;
       margin-bottom: 6px;
     }
+    .fixed-endpoints {
+      background: #0a1621;
+      border-radius: 40px;
+      padding: 6px 16px;
+      font-size: 0.85rem;
+      color: #f9f871;
+      border: 1px solid #4a6f8a;
+      text-align: center;
+    }
     @media (max-width: 900px) {
       .canvas-panel {
         min-width: 100%;
@@ -290,10 +303,10 @@
 <div class="card">
   <h1>
     ⚡ Matrix Completion vs AODV
-    <span>slow motion · energy efficiency</span>
+    <span>fixed SRC/DST · slow mobility</span>
   </h1>
   <div class="subhead">
-    <div>Rescue-team mesh · 30 nodes · slow RPGM mobility · same trace for both protocols</div>
+    <div>Rescue-team mesh · 30 nodes · slow RPGM mobility · <strong>same fixed source & destination all steps</strong></div>
     <div class="badge" id="simStatus">running</div>
   </div>
 
@@ -303,15 +316,17 @@
       <canvas id="networkCanvas" width="800" height="500"></canvas>
       <div class="overlay-label">
         <span>🔵 nodes</span>
-        <span>🟠 AODV route (high energy)</span>
-        <span>🟢 MC route (low energy)</span>
+        <span>🟠 AODV route</span>
+        <span>🟢 MC route</span>
         <span>🟣 predicted link (MC)</span>
+        <span>🟡 fixed src/dst</span>
       </div>
     </div>
 
     <!-- RIGHT: energy metrics -->
     <div class="metrics-panel">
       <div class="status-text" id="tickLabel">step 0 / 200</div>
+      <div class="fixed-endpoints" id="fixedEndpointsLabel">src: — · dst: —</div>
 
       <div class="metric-card aodv">
         <div class="metric-header">
@@ -353,9 +368,10 @@
         <div class="legend-item"><span class="dot aodv-dot"></span> AODV path</div>
         <div class="legend-item"><span class="dot mc-dot"></span> MC path</div>
         <div class="legend-item"><span class="dot predicted-dot"></span> predicted link</div>
+        <div class="legend-item"><span class="dot src-dot"></span> fixed src/dst</div>
       </div>
       <div class="info-note">
-        ⚡ MC uses matrix completion + local repair: fewer route floods, lower energy. Nodes move slowly so you can observe.
+        ⚡ Fixed source & destination for the whole run — watch how the routes adapt as nodes drift slowly.
       </div>
     </div>
   </div>
@@ -371,55 +387,57 @@
     // ---------- simulation parameters ----------
     const N = 30;                    // number of nodes
     const RADIO_RANGE = 160;         // pixels (equivalent to radio range)
-    const PACKET_INTERVAL = 5;       // steps between packets
     const SIM_STEPS = 200;           // total steps
-    const AODV_TX_ENERGY = 3.2;      // J per hop (high, represents flood + transmit)
+    const AODV_TX_ENERGY = 3.2;      // J per hop
     const AODV_RX_ENERGY = 1.2;
-    const MC_TX_ENERGY = 1.0;        // J per hop (lower, efficient routing)
+    const MC_TX_ENERGY = 1.0;        // J per hop
     const MC_RX_ENERGY = 0.4;
-    const AODV_ROUTE_DISCOVERY_ENERGY = 0.8; // extra per discovery
-    const MC_COMPLETION_ENERGY = 0.02;       // per completion (tiny)
-    const AODV_BREAK_PENALTY = 0.5;          // energy wasted on broken link
+    const AODV_ROUTE_DISCOVERY_ENERGY = 0.8;
+    const MC_COMPLETION_ENERGY = 0.02;
+    const AODV_BREAK_PENALTY = 0.5;
 
     // ---------- state ----------
-    let nodes = [];            // {x, y, vx, vy}
+    let nodes = [];
     let step = 0;
     let running = true;
     let animationFrame = null;
 
-    // energy accumulators (total over simulation)
     let aodvTotalEnergy = 0;
     let mcTotalEnergy = 0;
 
-    // For drawing current routes (computed each step)
-    let aodvRoute = [];       // array of node indices
-    let mcRoute = [];         // array of node indices
-    let predictedLinks = [];  // list of [i,j] pairs that MC *thinks* exist (completion)
+    let aodvRoute = [];
+    let mcRoute = [];
+    let predictedLinks = [];
 
-    // For energy bar scaling
-    let maxEnergyRef = 6000;   // will adapt
+    // fixed source & destination (set once on init)
+    let FIXED_SRC = null;
+    let FIXED_DST = null;
 
-    // ---------- helper: distance ----------
+    let maxEnergyRef = 6000;
+
+    // ---------- helper ----------
     function dist(a, b) {
       return Math.hypot(a.x - b.x, a.y - b.y);
     }
 
-    // ---------- initialize nodes with random positions ----------
+    // ---------- initialize nodes ----------
     function initNodes() {
       nodes = [];
       for (let i = 0; i < N; i++) {
         nodes.push({
           x: 80 + Math.random() * (W - 160),
           y: 60 + Math.random() * (H - 120),
-          vx: (Math.random() - 0.5) * 0.3,   // much slower initial velocity
+          vx: (Math.random() - 0.5) * 0.3,
           vy: (Math.random() - 0.5) * 0.3
         });
       }
+      // pick fixed src/dst once (guaranteed distinct)
+      FIXED_SRC = Math.floor(Math.random() * N);
+      do { FIXED_DST = Math.floor(Math.random() * N); } while (FIXED_DST === FIXED_SRC);
     }
 
-    // ---------- mobility update (SLOW RPGM-like with clustering) ----------
+    // ---------- slow mobility ----------
     function updatePositions() {
-      // gentle random walk + attraction to a few team centers (simulating RPGM)
       const teamCenters = [
         { x: W * 0.25, y: H * 0.3 },
         { x: W * 0.7, y: H * 0.6 },
@@ -427,22 +445,18 @@
       ];
       for (let i = 0; i < nodes.length; i++) {
         let n = nodes[i];
-        // extremely slow jitter
         n.vx += (Math.random() - 0.5) * 0.08;
         n.vy += (Math.random() - 0.5) * 0.08;
-        // very weak pull towards nearest team center
         let nearest = teamCenters.reduce((a, b) => dist(n, a) < dist(n, b) ? a : b);
         let dx = nearest.x - n.x;
         let dy = nearest.y - n.y;
         let d = Math.hypot(dx, dy) || 1;
         if (d > 140) {
-          n.vx += dx / d * 0.03;   // tiny pull
+          n.vx += dx / d * 0.03;
           n.vy += dy / d * 0.03;
         }
-        // strong dampening to keep speed very low
         n.vx *= 0.95;
         n.vy *= 0.95;
-        // limit speed to a very slow crawl (max 0.5 px per step)
         let sp = Math.hypot(n.vx, n.vy);
         if (sp > 0.5) {
           n.vx *= 0.5 / sp;
@@ -450,7 +464,6 @@
         }
         n.x += n.vx;
         n.y += n.vy;
-        // boundary with gentle bounce
         if (n.x < 40) { n.x = 40; n.vx *= -0.4; }
         if (n.x > W - 40) { n.x = W - 40; n.vx *= -0.4; }
         if (n.y < 40) { n.y = 40; n.vy *= -0.4; }
@@ -458,13 +471,12 @@
       }
     }
 
-    // ---------- build actual adjacency matrix (true topology) ----------
+    // ---------- adjacency ----------
     function buildAdjacency() {
       const adj = Array.from({ length: N }, () => Array(N).fill(false));
       for (let i = 0; i < N; i++) {
         for (let j = i + 1; j < N; j++) {
-          const d = dist(nodes[i], nodes[j]);
-          if (d < RADIO_RANGE) {
+          if (dist(nodes[i], nodes[j]) < RADIO_RANGE) {
             adj[i][j] = adj[j][i] = true;
           }
         }
@@ -472,7 +484,7 @@
       return adj;
     }
 
-    // ---------- shortest path using BFS (hops) ----------
+    // ---------- shortest path ----------
     function shortestPath(adj, src, dst) {
       if (src === dst) return [src];
       const visited = new Array(N).fill(false);
@@ -500,7 +512,7 @@
       return path.reverse();
     }
 
-    // ---------- create a partial observation for MC: drop some links ----------
+    // ---------- partial observation for MC ----------
     function partialObservation(adj) {
       const obs = Array.from({ length: N }, () => Array(N).fill(false));
       for (let i = 0; i < N; i++) {
@@ -513,7 +525,7 @@
       return obs;
     }
 
-    // ---------- matrix completion step ----------
+    // ---------- matrix completion ----------
     function completeMatrix(obs, adj) {
       const comp = obs.map(row => row.slice());
       const predictedPairs = [];
@@ -534,30 +546,17 @@
       return { comp, predictedPairs };
     }
 
-    // ---------- pick random src/dst for packet ----------
-    function pickSourceDest() {
-      let src = Math.floor(Math.random() * N);
-      let dst;
-      do { dst = Math.floor(Math.random() * N); } while (dst === src);
-      return { src, dst };
-    }
-
-    // ---------- energy calculation and route selection ----------
+    // ---------- update routes & energy (fixed src/dst) ----------
     function updateRoutesAndEnergy() {
       const adj = buildAdjacency();
+      const src = FIXED_SRC;
+      const dst = FIXED_DST;
 
-      // New src/dst every PACKET_INTERVAL steps
-      if (!window.currentSrcDst || step % PACKET_INTERVAL === 0) {
-        window.currentSrcDst = pickSourceDest();
-      }
-      const { src, dst } = window.currentSrcDst;
-
-      // AODV path (shortest hop, uses full topology)
+      // ---- AODV ----
       let aodvPath = shortestPath(adj, src, dst);
       if (!aodvPath) aodvPath = [];
       aodvRoute = aodvPath;
 
-      // AODV energy accounting
       if (aodvPath.length > 1) {
         const hops = aodvPath.length - 1;
         let e = hops * (AODV_TX_ENERGY + AODV_RX_ENERGY);
@@ -568,7 +567,7 @@
         aodvTotalEnergy += e;
       }
 
-      // MC: partial observation, completion, routing on completed matrix
+      // ---- MC ----
       const obs = partialObservation(adj);
       const { comp, predictedPairs } = completeMatrix(obs, adj);
       predictedLinks = predictedPairs;
@@ -581,7 +580,6 @@
         const hops = mcPath.length - 1;
         let e = hops * (MC_TX_ENERGY + MC_RX_ENERGY);
         e += MC_COMPLETION_ENERGY;
-        // small penalty if path uses a predicted link that is actually missing
         for (let k = 0; k < mcPath.length - 1; k++) {
           const u = mcPath[k], v = mcPath[k+1];
           if (!adj[u][v] && comp[u][v]) {
@@ -593,7 +591,6 @@
         mcTotalEnergy += MC_COMPLETION_ENERGY;
       }
 
-      // update max energy reference
       const maxVal = Math.max(aodvTotalEnergy, mcTotalEnergy, 10);
       maxEnergyRef = Math.max(maxVal * 1.2, 800);
     }
@@ -602,7 +599,7 @@
     function draw() {
       ctx.clearRect(0, 0, W, H);
 
-      // faint grid
+      // grid
       for (let i = 0; i < W; i += 40) {
         ctx.beginPath();
         ctx.moveTo(i, 0);
@@ -618,7 +615,7 @@
         ctx.stroke();
       }
 
-      // draw all actual links (very faint)
+      // actual links (faint)
       const adj = buildAdjacency();
       ctx.lineWidth = 1.0;
       for (let i = 0; i < N; i++) {
@@ -651,7 +648,7 @@
       ctx.setLineDash([]);
       ctx.globalAlpha = 1.0;
 
-      // AODV route (orange, thick)
+      // AODV route (orange)
       if (aodvRoute.length > 1) {
         ctx.beginPath();
         ctx.lineWidth = 6;
@@ -668,7 +665,7 @@
         ctx.globalAlpha = 1.0;
       }
 
-      // MC route (green, thick)
+      // MC route (green)
       if (mcRoute.length > 1) {
         ctx.beginPath();
         ctx.lineWidth = 5;
@@ -701,22 +698,44 @@
         ctx.fill();
       }
 
-      // highlight src/dst
-      if (window.currentSrcDst) {
-        const { src, dst } = window.currentSrcDst;
+      // highlight fixed SRC and DST
+      if (FIXED_SRC !== null && FIXED_DST !== null) {
+        // source: yellow glow ring + inner
         ctx.beginPath();
-        ctx.arc(nodes[src].x, nodes[src].y, 12, 0, 2 * Math.PI);
+        ctx.arc(nodes[FIXED_SRC].x, nodes[FIXED_SRC].y, 14, 0, 2 * Math.PI);
         ctx.strokeStyle = "#f9f871";
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 3.5;
+        ctx.shadowColor = "#f9f871";
+        ctx.shadowBlur = 20;
         ctx.stroke();
+        ctx.shadowBlur = 0;
+        // small 'S' label
+        ctx.font = "bold 14px 'Segoe UI'";
+        ctx.fillStyle = "#f9f871";
+        ctx.shadowColor = "#000000";
+        ctx.shadowBlur = 6;
+        ctx.fillText("S", nodes[FIXED_SRC].x + 16, nodes[FIXED_SRC].y - 12);
+        ctx.shadowBlur = 0;
+
+        // destination: similar but different color (light cyan)
         ctx.beginPath();
-        ctx.arc(nodes[dst].x, nodes[dst].y, 12, 0, 2 * Math.PI);
-        ctx.strokeStyle = "#f9f871";
+        ctx.arc(nodes[FIXED_DST].x, nodes[FIXED_DST].y, 14, 0, 2 * Math.PI);
+        ctx.strokeStyle = "#6ee7ff";
+        ctx.lineWidth = 3.5;
+        ctx.shadowColor = "#6ee7ff";
+        ctx.shadowBlur = 20;
         ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.font = "bold 14px 'Segoe UI'";
+        ctx.fillStyle = "#6ee7ff";
+        ctx.shadowColor = "#000000";
+        ctx.shadowBlur = 6;
+        ctx.fillText("D", nodes[FIXED_DST].x + 16, nodes[FIXED_DST].y - 12);
+        ctx.shadowBlur = 0;
       }
     }
 
-    // ---------- update UI ----------
+    // ---------- UI ----------
     function updateUI() {
       const aodvEl = document.getElementById('aodvEnergy');
       const mcEl = document.getElementById('mcEnergy');
@@ -725,6 +744,7 @@
       const savingsDisplay = document.getElementById('savingsDisplay');
       const savingsDetail = document.getElementById('savingsDetail');
       const tickLabel = document.getElementById('tickLabel');
+      const fixedLabel = document.getElementById('fixedEndpointsLabel');
 
       aodvEl.innerHTML = aodvTotalEnergy.toFixed(1) + ' <small>J</small>';
       mcEl.innerHTML = mcTotalEnergy.toFixed(1) + ' <small>J</small>';
@@ -738,9 +758,12 @@
       savingsDetail.textContent = savings > 0 ? `MC saves ${ (aodvTotalEnergy - mcTotalEnergy).toFixed(1) } J so far` : '—';
 
       tickLabel.textContent = `step ${step} / ${SIM_STEPS}`;
+      if (FIXED_SRC !== null && FIXED_DST !== null) {
+        fixedLabel.textContent = `fixed src: node ${FIXED_SRC} · fixed dst: node ${FIXED_DST}`;
+      }
     }
 
-    // ---------- simulation tick ----------
+    // ---------- tick ----------
     function tick() {
       if (!running) return;
 
@@ -776,13 +799,11 @@
       aodvRoute = [];
       mcRoute = [];
       predictedLinks = [];
-      window.currentSrcDst = null;
       maxEnergyRef = 6000;
       running = true;
       document.getElementById('simStatus').textContent = 'running';
       document.getElementById('toggleBtn').textContent = '⏸ pause';
-      initNodes();
-      // run first step immediately
+      initNodes();          // picks new fixed SRC / DST
       updatePositions();
       updateRoutesAndEnergy();
       draw();
