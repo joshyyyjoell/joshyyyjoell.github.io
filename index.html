@@ -292,10 +292,10 @@
     let maxEnergyRef = 6000;
 
     // --- route change tracking ---
-    let prevAodvRoute = [];
-    let prevMcRoute = [];
-    let breakFlash = [];
-    let mcSwapFlash = [];
+    let prevAodvRoute = [];       // last step's AODV path
+    let prevMcRoute = [];         // last step's MC path
+    let breakFlash = [];          // { u, v, t } to draw a red "break" flash
+    let mcSwapFlash = [];         // { u, v, t } to draw a green "swap" flash
     let stepCounter = 0;
 
     // event log
@@ -307,6 +307,7 @@
       div.className = cls || '';
       div.textContent = msg;
       eventLogEl.appendChild(div);
+      // keep log trimmed
       while (eventLogEl.children.length > 8) {
         eventLogEl.removeChild(eventLogEl.firstChild);
       }
@@ -315,7 +316,9 @@
 
     // ---------- helpers ----------
     function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
     function pathKey(p) { return p.join('-'); }
+
     function isLinkInPath(path, u, v) {
       for (let i = 0; i < path.length - 1; i++) {
         const a = path[i], b = path[i+1];
@@ -339,7 +342,7 @@
       do { FIXED_DST = Math.floor(Math.random() * N); } while (FIXED_DST === FIXED_SRC);
     }
 
-    // ---------- SLOWED DOWN mobility ----------
+    // ---------- slow mobility ----------
     function updatePositions() {
       const teamCenters = [
         { x: W * 0.25, y: H * 0.3 },
@@ -348,22 +351,15 @@
       ];
       for (let i = 0; i < nodes.length; i++) {
         let n = nodes[i];
-        // much gentler random jitter
-        n.vx += (Math.random() - 0.5) * 0.025;
-        n.vy += (Math.random() - 0.5) * 0.025;
-
+        n.vx += (Math.random() - 0.5) * 0.08;
+        n.vy += (Math.random() - 0.5) * 0.08;
         let nearest = teamCenters.reduce((a, b) => dist(n, a) < dist(n, b) ? a : b);
         let dx = nearest.x - n.x, dy = nearest.y - n.y;
         let d = Math.hypot(dx, dy) || 1;
-        if (d > 140) { n.vx += dx / d * 0.012; n.vy += dy / d * 0.012; }
-
-        // stronger damping = slower movement
-        n.vx *= 0.97; n.vy *= 0.97;
-
+        if (d > 140) { n.vx += dx / d * 0.03; n.vy += dy / d * 0.03; }
+        n.vx *= 0.95; n.vy *= 0.95;
         let sp = Math.hypot(n.vx, n.vy);
-        const MAX_SPEED = 0.18;   // ← slowed from 0.5 to 0.18
-        if (sp > MAX_SPEED) { n.vx *= MAX_SPEED / sp; n.vy *= MAX_SPEED / sp; }
-
+        if (sp > 0.5) { n.vx *= 0.5 / sp; n.vy *= 0.5 / sp; }
         n.x += n.vx; n.y += n.vy;
         if (n.x < 40) { n.x = 40; n.vx *= -0.4; }
         if (n.x > W - 40) { n.x = W - 40; n.vx *= -0.4; }
@@ -445,16 +441,20 @@
 
     // ---------- detect route change & log ----------
     function detectRouteChanges(adj) {
+      // AODV break: a link that was in the previous route is no longer present
       if (prevAodvRoute.length > 1) {
         for (let i = 0; i < prevAodvRoute.length - 1; i++) {
           const u = prevAodvRoute[i], v = prevAodvRoute[i+1];
           if (!adj[u][v]) {
+            // flash the broken link
             breakFlash.push({ u, v, t: 18 });
             addLog(`🔴 AODV break: link ${u}↔${v} lost → route re-discovery flood`, 'log-break');
             break;
           }
         }
+        // If overall path is different (even without a broken edge — e.g., a shorter path appeared)
         if (aodvRoute.length > 1 && pathKey(aodvRoute) !== pathKey(prevAodvRoute)) {
+          // Only log if it wasn't already logged as a break
           const alreadyLogged = breakFlash.length > 0 && breakFlash[breakFlash.length-1].t > 14;
           if (!alreadyLogged) {
             addLog(`🟠 AODV re-route: ${prevAodvRoute.length-1} → ${aodvRoute.length-1} hops`, 'log-aodv');
@@ -462,8 +462,10 @@
         }
       }
 
+      // MC route change — usually a smooth local swap
       if (prevMcRoute.length > 0 && mcRoute.length > 1 &&
           pathKey(mcRoute) !== pathKey(prevMcRoute)) {
+        // find a node that changed
         let diffNode = -1;
         for (let i = 0; i < Math.max(prevMcRoute.length, mcRoute.length); i++) {
           if (prevMcRoute[i] !== mcRoute[i]) { diffNode = i; break; }
@@ -518,6 +520,7 @@
         mcTotalEnergy += MC_COMPLETION_ENERGY;
       }
 
+      // Detect and log route changes
       detectRouteChanges(adj);
 
       const maxVal = Math.max(aodvTotalEnergy, mcTotalEnergy, 10);
@@ -528,6 +531,7 @@
     function draw() {
       ctx.clearRect(0, 0, W, H);
 
+      // grid
       for (let i = 0; i < W; i += 40) {
         ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, H);
         ctx.strokeStyle = "#162b3b"; ctx.stroke();
@@ -539,6 +543,7 @@
 
       const adj = buildAdjacency();
 
+      // faint actual links
       ctx.lineWidth = 1.0;
       for (let i = 0; i < N; i++) {
         for (let j = i + 1; j < N; j++) {
@@ -554,6 +559,7 @@
       }
       ctx.globalAlpha = 1.0;
 
+      // predicted links (dashed purple)
       ctx.setLineDash([5, 6]);
       ctx.lineWidth = 2.0;
       ctx.strokeStyle = "#c084fc";
@@ -569,6 +575,7 @@
       ctx.setLineDash([]);
       ctx.globalAlpha = 1.0;
 
+      // AODV route (orange)
       if (aodvRoute.length > 1) {
         ctx.beginPath();
         ctx.lineWidth = 6;
@@ -585,6 +592,7 @@
         ctx.globalAlpha = 1.0;
       }
 
+      // MC route (green)
       if (mcRoute.length > 1) {
         ctx.beginPath();
         ctx.lineWidth = 5;
@@ -601,6 +609,7 @@
         ctx.globalAlpha = 1.0;
       }
 
+      // draw nodes
       for (let i = 0; i < N; i++) {
         const n = nodes[i];
         ctx.shadowColor = "#7ab7ff";
@@ -616,6 +625,7 @@
         ctx.fill();
       }
 
+      // break flashes (red X) — draw before src/dst
       for (let k = breakFlash.length - 1; k >= 0; k--) {
         const f = breakFlash[k];
         if (f.t <= 0) { breakFlash.splice(k, 1); continue; }
@@ -627,6 +637,7 @@
         ctx.lineWidth = 5;
         ctx.shadowColor = "#ff4d4d";
         ctx.shadowBlur = 16 * alpha;
+        // draw a jagged "break" between the two nodes: X in the middle
         const mx = (ax + bx) / 2, my = (ay + by) / 2;
         const len = 16;
         ctx.moveTo(mx - len, my - len); ctx.lineTo(mx + len, my + len);
@@ -636,6 +647,7 @@
         f.t--;
       }
 
+      // MC swap flashes (green pulse ring)
       for (let k = mcSwapFlash.length - 1; k >= 0; k--) {
         const f = mcSwapFlash[k];
         if (f.t <= 0) { mcSwapFlash.splice(k, 1); continue; }
@@ -652,7 +664,9 @@
         f.t--;
       }
 
+      // --- SRC & DST tags ---
       if (FIXED_SRC !== null && FIXED_DST !== null) {
+        // Source (S)
         const s = nodes[FIXED_SRC];
         ctx.beginPath();
         ctx.arc(s.x, s.y, 15, 0, 2 * Math.PI);
@@ -662,8 +676,10 @@
         ctx.shadowBlur = 22;
         ctx.stroke();
         ctx.shadowBlur = 0;
+        // tag
         drawTag(s.x + 20, s.y - 18, "S", "#f9f871", "#1a1a00");
 
+        // Destination (D)
         const d = nodes[FIXED_DST];
         ctx.beginPath();
         ctx.arc(d.x, d.y, 15, 0, 2 * Math.PI);
@@ -677,27 +693,11 @@
       }
     }
 
+    // small rounded tag with letter
     function drawTag(x, y, letter, bg, fg) {
       const padX = 9, padY = 5, r = 8;
       ctx.font = "bold 14px 'Segoe UI'";
       const w = ctx.measureText(letter).width + padX * 2;
       const h = 22;
+      // rounded rect
       ctx.beginPath();
-      ctx.moveTo(x - w/2 + r, y - h/2);
-      ctx.arcTo(x + w/2, y - h/2, x + w/2, y + h/2, r);
-      ctx.arcTo(x + w/2, y + h/2, x - w/2, y + h/2, r);
-      ctx.arcTo(x - w/2, y + h/2, x - w/2, y - h/2, r);
-      ctx.arcTo(x - w/2, y - h/2, x + w/2, y - h/2, r);
-      ctx.closePath();
-      ctx.fillStyle = bg;
-      ctx.fill();
-      ctx.fillStyle = fg;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(letter, x, y);
-    }
-
-    // ---------- UI update ----------
-    function updateUI() {
-      document.getElementById('tickLabel').textContent = `step ${step} / ${SIM_STEPS}`;
-      document.getElementById('fixedEndpointsLabel').textContent = `src:
