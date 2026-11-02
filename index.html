@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Matrix Completion vs AODV — route breaks & adaptive MC</title>
+  <title>Matrix Completion vs AODV — fixed src/dst, slow mobility</title>
   <style>
     * {
       box-sizing: border-box;
@@ -286,17 +286,6 @@
       border: 1px solid #4a6f8a;
       text-align: center;
     }
-    .break-badge {
-      background: #4a1e1e;
-      border: 1px solid #b84b4b;
-      color: #ff9e9e;
-      font-size: 0.8rem;
-      padding: 2px 10px;
-      border-radius: 40px;
-      display: inline-block;
-      margin-left: 10px;
-      font-weight: 600;
-    }
     @media (max-width: 900px) {
       .canvas-panel {
         min-width: 100%;
@@ -331,7 +320,6 @@
         <span>🟢 MC route</span>
         <span>🟣 predicted link (MC)</span>
         <span>🟡 fixed src/dst</span>
-        <span>🔴 AODV break</span>
       </div>
     </div>
 
@@ -343,7 +331,7 @@
       <div class="metric-card aodv">
         <div class="metric-header">
           <span>🟠 AODV</span>
-          <span>energy consumed <span id="aodvBreaks" class="break-badge">0 breaks</span></span>
+          <span>energy consumed</span>
         </div>
         <div class="metric-value" id="aodvEnergy">0 <small>J</small></div>
         <div class="progress-bar-bg">
@@ -383,7 +371,7 @@
         <div class="legend-item"><span class="dot src-dot"></span> fixed src/dst</div>
       </div>
       <div class="info-note">
-        ⚡ AODV route breaks frequently — MC reroutes via predicted neighbors to save energy.
+        ⚡ Fixed source & destination for the whole run — watch how the routes adapt as nodes drift slowly.
       </div>
     </div>
   </div>
@@ -397,12 +385,12 @@
     const W = canvas.width, H = canvas.height;
 
     // ---------- simulation parameters ----------
-    const N = 30;
-    const RADIO_RANGE = 160;
-    const SIM_STEPS = 200;
-    const AODV_TX_ENERGY = 3.2;
+    const N = 30;                    // number of nodes
+    const RADIO_RANGE = 160;         // pixels (equivalent to radio range)
+    const SIM_STEPS = 200;           // total steps
+    const AODV_TX_ENERGY = 3.2;      // J per hop
     const AODV_RX_ENERGY = 1.2;
-    const MC_TX_ENERGY = 1.0;
+    const MC_TX_ENERGY = 1.0;        // J per hop
     const MC_RX_ENERGY = 0.4;
     const AODV_ROUTE_DISCOVERY_ENERGY = 0.8;
     const MC_COMPLETION_ENERGY = 0.02;
@@ -416,13 +404,12 @@
 
     let aodvTotalEnergy = 0;
     let mcTotalEnergy = 0;
-    let aodvBreakCount = 0;
 
     let aodvRoute = [];
     let mcRoute = [];
     let predictedLinks = [];
-    let brokenLinkFlash = null;       // {i, j, timer}
 
+    // fixed source & destination (set once on init)
     let FIXED_SRC = null;
     let FIXED_DST = null;
 
@@ -444,6 +431,7 @@
           vy: (Math.random() - 0.5) * 0.3
         });
       }
+      // pick fixed src/dst once (guaranteed distinct)
       FIXED_SRC = Math.floor(Math.random() * N);
       do { FIXED_DST = Math.floor(Math.random() * N); } while (FIXED_DST === FIXED_SRC);
     }
@@ -537,11 +525,10 @@
       return obs;
     }
 
-    // ---------- matrix completion (with preference for energy-efficient links) ----------
+    // ---------- matrix completion ----------
     function completeMatrix(obs, adj) {
       const comp = obs.map(row => row.slice());
       const predictedPairs = [];
-      // First pass: complete using common neighbors, but bias toward shorter links
       for (let i = 0; i < N; i++) {
         for (let j = i + 1; j < N; j++) {
           if (!comp[i][j]) {
@@ -549,11 +536,7 @@
             for (let k = 0; k < N; k++) {
               if (obs[i][k] && obs[j][k]) common++;
             }
-            // Higher chance if nodes are physically closer (better energy efficiency)
-            const distance = dist(nodes[i], nodes[j]);
-            const distanceFactor = Math.max(0, 1 - distance / (RADIO_RANGE * 1.5));
-            const prob = 0.35 + 0.4 * distanceFactor + 0.1 * Math.min(common, 3);
-            if (common >= 1 && Math.random() < Math.min(0.85, prob)) {
+            if (common >= 1 && Math.random() < 0.45) {
               comp[i][j] = comp[j][i] = true;
               predictedPairs.push([i, j]);
             }
@@ -574,39 +557,14 @@
       if (!aodvPath) aodvPath = [];
       aodvRoute = aodvPath;
 
-      // ----- AODV: simulate MULTIPLE BREAKS per step (probabilistic) -----
-      let stepBreaks = 0;
-      // Probability of at least one break per step is high (~60-70%)
-      if (aodvPath.length > 1 && Math.random() < 0.65) {
-        // Could be multiple breaks in a single step
-        const breakEvents = 1 + Math.floor(Math.random() * 3); // 1 to 3 breaks
-        for (let b = 0; b < breakEvents; b++) {
-          stepBreaks++;
-          // Add extra energy penalty for each break
-          aodvTotalEnergy += AODV_BREAK_PENALTY * (0.8 + Math.random() * 0.8);
-          // Visual flash on a random link of the current AODV path (if exists)
-          if (aodvPath.length > 1) {
-            const linkIdx = Math.floor(Math.random() * (aodvPath.length - 1));
-            const u = aodvPath[linkIdx];
-            const v = aodvPath[linkIdx + 1];
-            brokenLinkFlash = { i: u, j: v, timer: 6 }; // flash for 6 frames
-          }
-        }
-        // Apply additional route discovery energy due to breaks
-        aodvTotalEnergy += AODV_ROUTE_DISCOVERY_ENERGY * (1 + Math.random()) * stepBreaks;
-      }
-
-      // Regular per-step energy for AODV (based on current hops)
       if (aodvPath.length > 1) {
         const hops = aodvPath.length - 1;
         let e = hops * (AODV_TX_ENERGY + AODV_RX_ENERGY);
         e += AODV_ROUTE_DISCOVERY_ENERGY * (1 + Math.random() * 0.5);
+        if (Math.random() < 0.25) {
+          e += AODV_BREAK_PENALTY * (1 + Math.random());
+        }
         aodvTotalEnergy += e;
-      }
-
-      // Accumulate break count
-      if (stepBreaks > 0) {
-        aodvBreakCount += stepBreaks;
       }
 
       // ---- MC ----
@@ -622,7 +580,6 @@
         const hops = mcPath.length - 1;
         let e = hops * (MC_TX_ENERGY + MC_RX_ENERGY);
         e += MC_COMPLETION_ENERGY;
-        // Energy cost for using predicted links
         for (let k = 0; k < mcPath.length - 1; k++) {
           const u = mcPath[k], v = mcPath[k+1];
           if (!adj[u][v] && comp[u][v]) {
@@ -636,12 +593,6 @@
 
       const maxVal = Math.max(aodvTotalEnergy, mcTotalEnergy, 10);
       maxEnergyRef = Math.max(maxVal * 1.2, 800);
-
-      // Decrement flash timer
-      if (brokenLinkFlash) {
-        brokenLinkFlash.timer--;
-        if (brokenLinkFlash.timer <= 0) brokenLinkFlash = null;
-      }
     }
 
     // ---------- drawing ----------
@@ -758,6 +709,7 @@
         ctx.shadowBlur = 20;
         ctx.stroke();
         ctx.shadowBlur = 0;
+        // small 'S' label
         ctx.font = "bold 14px 'Segoe UI'";
         ctx.fillStyle = "#f9f871";
         ctx.shadowColor = "#000000";
@@ -765,7 +717,7 @@
         ctx.fillText("S", nodes[FIXED_SRC].x + 16, nodes[FIXED_SRC].y - 12);
         ctx.shadowBlur = 0;
 
-        // destination: cyan
+        // destination: similar but different color (light cyan)
         ctx.beginPath();
         ctx.arc(nodes[FIXED_DST].x, nodes[FIXED_DST].y, 14, 0, 2 * Math.PI);
         ctx.strokeStyle = "#6ee7ff";
@@ -781,33 +733,6 @@
         ctx.fillText("D", nodes[FIXED_DST].x + 16, nodes[FIXED_DST].y - 12);
         ctx.shadowBlur = 0;
       }
-
-      // draw AODV break flash (red broken link)
-      if (brokenLinkFlash && brokenLinkFlash.timer > 0) {
-        const i = brokenLinkFlash.i, j = brokenLinkFlash.j;
-        if (i < N && j < N) {
-          ctx.beginPath();
-          ctx.moveTo(nodes[i].x, nodes[i].y);
-          ctx.lineTo(nodes[j].x, nodes[j].y);
-          ctx.strokeStyle = "#ff4d4d";
-          ctx.lineWidth = 8;
-          ctx.shadowColor = "#ff4d4d";
-          ctx.shadowBlur = 25;
-          ctx.globalAlpha = 0.9;
-          ctx.stroke();
-          ctx.shadowBlur = 0;
-          ctx.globalAlpha = 1.0;
-          // draw a little break symbol (X) in the middle
-          const mx = (nodes[i].x + nodes[j].x) / 2;
-          const my = (nodes[i].y + nodes[j].y) / 2;
-          ctx.font = "bold 22px 'Segoe UI'";
-          ctx.fillStyle = "#ff4d4d";
-          ctx.shadowColor = "#000";
-          ctx.shadowBlur = 6;
-          ctx.fillText("✕", mx - 11, my + 8);
-          ctx.shadowBlur = 0;
-        }
-      }
     }
 
     // ---------- UI ----------
@@ -820,7 +745,6 @@
       const savingsDetail = document.getElementById('savingsDetail');
       const tickLabel = document.getElementById('tickLabel');
       const fixedLabel = document.getElementById('fixedEndpointsLabel');
-      const breaksEl = document.getElementById('aodvBreaks');
 
       aodvEl.innerHTML = aodvTotalEnergy.toFixed(1) + ' <small>J</small>';
       mcEl.innerHTML = mcTotalEnergy.toFixed(1) + ' <small>J</small>';
@@ -837,7 +761,6 @@
       if (FIXED_SRC !== null && FIXED_DST !== null) {
         fixedLabel.textContent = `fixed src: node ${FIXED_SRC} · fixed dst: node ${FIXED_DST}`;
       }
-      breaksEl.textContent = `${aodvBreakCount} breaks`;
     }
 
     // ---------- tick ----------
@@ -859,3 +782,64 @@
       step++;
 
       if (step >= SIM_STEPS) {
+        running = false;
+        document.getElementById('simStatus').textContent = 'finished';
+        document.getElementById('toggleBtn').textContent = '▶ play';
+      }
+
+      animationFrame = requestAnimationFrame(tick);
+    }
+
+    // ---------- restart ----------
+    function restart() {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      step = 0;
+      aodvTotalEnergy = 0;
+      mcTotalEnergy = 0;
+      aodvRoute = [];
+      mcRoute = [];
+      predictedLinks = [];
+      maxEnergyRef = 6000;
+      running = true;
+      document.getElementById('simStatus').textContent = 'running';
+      document.getElementById('toggleBtn').textContent = '⏸ pause';
+      initNodes();          // picks new fixed SRC / DST
+      updatePositions();
+      updateRoutesAndEnergy();
+      draw();
+      updateUI();
+      step = 1;
+      animationFrame = requestAnimationFrame(tick);
+    }
+
+    // ---------- pause / play ----------
+    function togglePause() {
+      if (running) {
+        running = false;
+        document.getElementById('simStatus').textContent = 'paused';
+        document.getElementById('toggleBtn').textContent = '▶ play';
+      } else {
+        if (step >= SIM_STEPS) {
+          restart();
+          return;
+        }
+        running = true;
+        document.getElementById('simStatus').textContent = 'running';
+        document.getElementById('toggleBtn').textContent = '⏸ pause';
+        animationFrame = requestAnimationFrame(tick);
+      }
+    }
+
+    // ---------- event listeners ----------
+    window.addEventListener('load', () => {
+      initNodes();
+      restart();
+    });
+
+    document.getElementById('restartBtn').addEventListener('click', restart);
+    document.getElementById('toggleBtn').addEventListener('click', togglePause);
+    canvas.addEventListener('click', togglePause);
+  })();
+</script>
+</body>
+</html>
